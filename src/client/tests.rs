@@ -253,6 +253,41 @@ async fn answers_server_pings_and_refuses_other_server_requests() {
     assert_eq!((b["id"].clone(), b["error"]["code"].clone()), (json!("b"), json!(crate::codes::METHOD_NOT_FOUND)));
 }
 
+#[tokio::test]
+async fn an_oversized_line_is_skipped_without_buffering_and_later_lines_still_work() {
+    let (client_end, server_end) = tokio::io::duplex(1024);
+    let (r, w) = tokio::io::split(client_end);
+    let (sr, mut sw) = tokio::io::split(server_end);
+    // Answers the first request (id 1) after sending a 100 KB junk line; limit is 1 KB.
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(sr).lines();
+        let _ = lines.next_line().await;
+        let junk = "x".repeat(100_000);
+        sw.write_all(format!("{junk}\n").as_bytes()).await.unwrap();
+        sw.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"serverInfo\":{\"name\":\"ok\",\"version\":\"1\"}}}\n").await.unwrap();
+        while lines.next_line().await.ok().flatten().is_some() {}
+    });
+    let t = StdioTransport::from_io_limited(r, w, 1024);
+    let client = Client::connect(t, options(3000)).await.unwrap();
+    assert_eq!(client.hello().name, "ok");
+}
+
+#[tokio::test]
+async fn an_oversized_response_times_out_instead_of_exhausting_memory() {
+    let (client_end, server_end) = tokio::io::duplex(1024);
+    let (r, w) = tokio::io::split(client_end);
+    let (sr, mut sw) = tokio::io::split(server_end);
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(sr).lines();
+        let _ = lines.next_line().await;
+        let big = format!("{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"pad\":\"{}\"}}}}\n", "y".repeat(50_000));
+        sw.write_all(big.as_bytes()).await.unwrap();
+        while lines.next_line().await.ok().flatten().is_some() {}
+    });
+    let e = Client::connect(StdioTransport::from_io_limited(r, w, 1024), options(300)).await.unwrap_err();
+    assert_eq!(e, ClientError::Timeout);
+}
+
 #[test]
 fn secrets_are_redacted_and_the_command_warns() {
     let cmd = StdioCommand::new("npx").arg("-y").arg("some-server").env("API_KEY", Secret::new("s3cret"));

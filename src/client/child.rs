@@ -64,6 +64,44 @@ impl StdioCommand {
     }
 }
 
+/// The longest line (one JSON message) the stdio transport accepts by default: 4 MiB.
+pub const DEFAULT_MAX_LINE: usize = 4 * 1024 * 1024;
+
+/// One line from the server, or a note that it was too long and was discarded.
+enum Line {
+    Text(Vec<u8>),
+    TooLong,
+}
+
+/// Reads up to the next `\n`, never holding more than `max` bytes: a longer line is skipped to its
+/// end and reported as [`Line::TooLong`]. `None` at end of input.
+async fn read_line_capped<R: AsyncBufReadExt + Unpin>(reader: &mut R, max: usize) -> std::io::Result<Option<Line>> {
+    let mut line = Vec::new();
+    let mut too_long = false;
+    loop {
+        let buf = reader.fill_buf().await?;
+        if buf.is_empty() {
+            return Ok((too_long || !line.is_empty()).then_some(if too_long { Line::TooLong } else { Line::Text(line) }));
+        }
+        let (chunk, done) = match buf.iter().position(|b| *b == b'\n') {
+            Some(i) => (i, true),
+            None => (buf.len(), false),
+        };
+        if !too_long {
+            if line.len() + chunk > max {
+                too_long = true;
+                line = Vec::new();
+            } else {
+                line.extend_from_slice(&buf[..chunk]);
+            }
+        }
+        reader.consume(chunk + usize::from(done));
+        if done {
+            return Ok(Some(if too_long { Line::TooLong } else { Line::Text(line) }));
+        }
+    }
+}
+
 type Pending = Mutex<HashMap<u64, oneshot::Sender<Result<Value, ClientError>>>>;
 type Writer = tokio::sync::Mutex<Box<dyn AsyncWrite + Send + Unpin>>;
 
@@ -137,6 +175,11 @@ impl StdioTransport {
     /// Starts `command` and talks to its stdin and stdout. Its stderr is discarded. The process
     /// is killed when the transport is dropped.
     pub fn spawn(command: &StdioCommand) -> Result<Self, ClientError> {
+        Self::spawn_limited(command, DEFAULT_MAX_LINE)
+    }
+
+    /// Like [`spawn`](Self::spawn) with a custom longest-line limit in bytes.
+    pub fn spawn_limited(command: &StdioCommand, max_line: usize) -> Result<Self, ClientError> {
         let mut cmd = tokio::process::Command::new(&command.program);
         cmd.args(&command.args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
         for (k, v) in &command.env {
@@ -148,13 +191,24 @@ impl StdioTransport {
         let mut child = cmd.spawn().map_err(|e| ClientError::Spawn(format!("{}: {e}", command.program)))?;
         let stdin = child.stdin.take().ok_or_else(|| ClientError::Spawn("no stdin".into()))?;
         let stdout = child.stdout.take().ok_or_else(|| ClientError::Spawn("no stdout".into()))?;
-        let mut t = Self::from_io(stdout, stdin);
+        let mut t = Self::from_io_limited(stdout, stdin, max_line);
         t.child = tokio::sync::Mutex::new(Some(child));
         Ok(t)
     }
 
     /// MCP over any reader and writer (in-memory pipes in tests, or a socket).
     pub fn from_io(reader: impl AsyncRead + Send + Unpin + 'static, writer: impl AsyncWrite + Send + Unpin + 'static) -> Self {
+        Self::from_io_limited(reader, writer, DEFAULT_MAX_LINE)
+    }
+
+    /// Like [`from_io`](Self::from_io) with a custom longest-line limit. A server line longer than
+    /// `max_line` bytes is discarded without being buffered (a request waiting for it then times
+    /// out), so a misbehaving server cannot exhaust memory.
+    pub fn from_io_limited(
+        reader: impl AsyncRead + Send + Unpin + 'static,
+        writer: impl AsyncWrite + Send + Unpin + 'static,
+        max_line: usize,
+    ) -> Self {
         let shared = Arc::new(Shared {
             pending: Mutex::new(HashMap::new()),
             closed: AtomicBool::new(false),
@@ -162,9 +216,11 @@ impl StdioTransport {
         });
         let task = shared.clone();
         let reader = tokio::spawn(async move {
-            let mut lines = BufReader::new(reader).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if let Ok(msg) = serde_json::from_str::<Value>(line.trim()) {
+            let mut reader = BufReader::new(reader);
+            while let Ok(Some(line)) = read_line_capped(&mut reader, max_line).await {
+                if let Line::Text(bytes) = line
+                    && let Ok(msg) = serde_json::from_slice::<Value>(bytes.trim_ascii())
+                {
                     task.dispatch(msg).await;
                 }
             }

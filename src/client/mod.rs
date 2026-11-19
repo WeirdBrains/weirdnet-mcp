@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 mod child;
 mod http;
 
-pub use child::{StdioCommand, StdioTransport};
+pub use child::{DEFAULT_MAX_LINE, StdioCommand, StdioTransport};
 pub use http::{HttpConfig, HttpTransport};
 
 use crate::PROTOCOL_VERSIONS;
