@@ -1,12 +1,12 @@
 # weirdnet-mcp release config for weirdnet-project-helpers (scripts/weirdnet_release.py).
 # Usage: python3 scripts/weirdnet_release.py [--patch|--major|--version X.Y.Z] [--dry-run]
 # Notes come from CHANGELOG.md `## [Unreleased]`; a message is optional.
-helpers = "0.1.1"
+helpers = "0.3.2"
 project = "weirdnet-mcp"
 next = ["docs.rs builds https://docs.rs/weirdnet-mcp/{version} from the crates.io upload"]
 
 [env]
-CARGO_TARGET_DIR = "/path/to/scratch/scratch/salty-gull/cargo-target"
+CARGO_TARGET_DIR = "/path/to/scratch/scratch/weirdnet-mcp/cargo-target"
 
 [[files]]
 kind = "cargo-package"
