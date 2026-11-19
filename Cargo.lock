@@ -67,6 +67,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
 
 [[package]]
+name = "cbor4ii"
+version = "1.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdf8ceac45b2b267e889b7210129e47d3b82f3020877f24473ea0fc055488ffa"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "cc"
 version = "1.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1359,11 +1368,12 @@ dependencies = [
 
 [[package]]
 name = "weirdnet-agent"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a19bf0471d5223e6437abd42ff65f084a093b45221b3c82d3cbf5e02eebc128"
+checksum = "9f0b5d0935a5307d8b395a8c0fa6d663c6663aca88fdc2c355e7e1edef85e69a"
 dependencies = [
  "async-trait",
+ "cbor4ii",
  "serde",
  "serde_json",
  "thiserror",
