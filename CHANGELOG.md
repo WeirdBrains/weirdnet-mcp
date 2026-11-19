@@ -4,6 +4,7 @@
 
 ### Changed
 
+- **Breaking for `agent` users:** the `agent` feature now depends on weirdnet-agent `=0.2.0` (was `=0.1.0`), so `McpSource` implements the 0.2.0 `ToolSource` and apps on weirdnet-agent 0.2.0 get a single copy of the trait. No source changes were needed here. The server API and the `client` feature are unchanged.
 - `client`: the stdio transport reads server lines with a cap (`DEFAULT_MAX_LINE`, 4 MiB; `StdioTransport::spawn_limited` and `from_io_limited` set it). A longer line is discarded without being buffered, so a misbehaving server cannot exhaust memory; a request waiting for it times out. Not breaking: `spawn` and `from_io` keep their signatures.
 
 ## [0.2.0] - 2026-11-18
