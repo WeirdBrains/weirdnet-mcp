@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-18
+
 ### Added
 
 - `client` cargo feature (off by default): an MCP client with stdio (local command) and streamable HTTP transports, `initialize`, `tools/list` (with paging), `tools/call`, per-request timeouts and cancellation (`notifications/cancelled`). Secrets are redacted `Secret`s; local commands have a `warning()`.
