@@ -40,10 +40,10 @@ impl Tools for App {
 /// The in-process mock: the crate's own `Server` plus a `hang` tool that never answers, a
 /// record of `notifications/cancelled`, and optional paging of `tools/list`.
 #[derive(Clone, Default)]
-struct Mock {
-    cancelled: Arc<Mutex<Vec<Value>>>,
+pub(crate) struct Mock {
+    pub(crate) cancelled: Arc<Mutex<Vec<Value>>>,
     seen: Arc<Mutex<Vec<String>>>,
-    page_size: Option<usize>,
+    pub(crate) page_size: Option<usize>,
 }
 
 impl Mock {
@@ -72,7 +72,7 @@ impl Mock {
         server.handle(None, msg)
     }
 
-    fn transport(&self) -> StdioTransport {
+    pub(crate) fn transport(&self) -> StdioTransport {
         let (client_end, server_end) = tokio::io::duplex(64 * 1024);
         let (client_r, client_w) = tokio::io::split(client_end);
         let (server_r, mut server_w) = tokio::io::split(server_end);
@@ -92,7 +92,7 @@ impl Mock {
     }
 }
 
-fn options(timeout_ms: u64) -> ClientOptions {
+pub(crate) fn options(timeout_ms: u64) -> ClientOptions {
     ClientOptions { timeout: Duration::from_millis(timeout_ms), ..ClientOptions::default() }
 }
 

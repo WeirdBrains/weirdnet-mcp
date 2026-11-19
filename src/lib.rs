@@ -10,10 +10,13 @@
 //!   description.
 //! - [`args`]: typed argument getters with uniform error messages.
 //! - `client` (cargo feature, off by default): an MCP *client* for stdio and streamable HTTP servers.
+//! - `agent` (cargo feature, implies `client`): `weirdnet_agent::ToolSource` for an MCP server.
 //! - [`stdio`]: the `<app>ctl mcp` loop that forwards stdio messages to a remote server.
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+#[cfg(feature = "agent")]
+pub mod agent;
 pub mod args;
 #[cfg(feature = "client")]
 pub mod client;

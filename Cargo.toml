@@ -17,12 +17,16 @@ include = ["src/**", "README.md", "CHANGELOG.md", "LICENSE"]
 default = []
 # MCP client (stdio and streamable HTTP transports). Off by default; the server API does not need it.
 client = ["dep:tokio", "dep:async-trait", "dep:reqwest"]
+# `weirdnet_agent::ToolSource` for an MCP server (implies `client`).
+agent = ["client", "dep:weirdnet-agent"]
 
 [dependencies]
 serde_json = "1"
 async-trait = { version = "0.1", optional = true }
 reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls"] }
 tokio = { version = "1", optional = true, features = ["rt", "sync", "time", "io-util", "process", "macros"] }
+
+weirdnet-agent = { version = "=0.1.0", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "io-util", "process", "macros", "net"] }

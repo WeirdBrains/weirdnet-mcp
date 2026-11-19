@@ -363,4 +363,4 @@ fn parse_result(r: &Value) -> ToolResult {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
