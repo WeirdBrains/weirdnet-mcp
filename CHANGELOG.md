@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking for `agent` users:** the `agent` feature now depends on weirdnet-agent `=0.3.0` (was `=0.2.0`), so `McpSource` implements the 0.3.0 `ToolSource`. No source changes were needed. The server API and the `client` feature are unchanged.
+
 ## [0.3.0] - 2026-11-18
 
 ### Changed
