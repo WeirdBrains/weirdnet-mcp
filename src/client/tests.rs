@@ -291,3 +291,149 @@ cat >/dev/null"#;
     client.close().await;
     assert_eq!(client.ping().await, Err(ClientError::Closed));
 }
+
+// ---- streamable HTTP, against a loopback mock (127.0.0.1, in this process) ----
+
+mod http {
+    use super::*;
+    use tokio::io::AsyncReadExt;
+    use tokio::net::TcpListener;
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mode {
+        Json,
+        Sse,
+        Unauthorized,
+    }
+
+    #[derive(Clone, Default)]
+    struct Seen {
+        /// (method, lower-cased headers) of every request.
+        reqs: Arc<Mutex<Vec<(String, String, Value)>>>,
+    }
+
+    async fn read_request(sock: &mut tokio::net::TcpStream) -> Option<(String, String, Value)> {
+        let mut data = Vec::new();
+        let mut tmp = [0u8; 4096];
+        let head_end = loop {
+            if let Some(p) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                break p;
+            }
+            let n = sock.read(&mut tmp).await.ok()?;
+            if n == 0 {
+                return None;
+            }
+            data.extend_from_slice(&tmp[..n]);
+        };
+        let head = String::from_utf8_lossy(&data[..head_end]).to_lowercase();
+        let len = head.lines().find_map(|l| l.strip_prefix("content-length: ")).and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(0);
+        while data.len() < head_end + 4 + len {
+            let n = sock.read(&mut tmp).await.ok()?;
+            if n == 0 {
+                return None;
+            }
+            data.extend_from_slice(&tmp[..n]);
+        }
+        let body: Value = serde_json::from_slice(&data[head_end + 4..head_end + 4 + len]).unwrap_or(Value::Null);
+        let method = head.split_whitespace().next()?.to_string();
+        Some((method, head, body))
+    }
+
+    async fn serve(mode: Mode, seen: Seen) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/mcp", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            let server = Arc::new(Server::new(
+                ServerInfo { name: "http-mock".into(), title: "M".into(), version: "1".into(), instructions: String::new() },
+                App,
+            ));
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else { return };
+                let (server, seen) = (server.clone(), seen.clone());
+                tokio::spawn(async move {
+                    let Some((method, head, body)) = read_request(&mut sock).await else { return };
+                    seen.reqs.lock().unwrap().push((method.clone(), head.clone(), body.clone()));
+                    let respond = |status: &str, extra: &str, ctype: &str, payload: String| {
+                        format!(
+                            "HTTP/1.1 {status}\r\n{extra}content-type: {ctype}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{payload}",
+                            payload.len()
+                        )
+                    };
+                    let out = if mode == Mode::Unauthorized {
+                        respond("401 Unauthorized", "", "text/plain", "nope".into())
+                    } else if method == "delete" {
+                        respond("200 OK", "", "text/plain", String::new())
+                    } else {
+                        match server.handle(None, body.clone()) {
+                            None => respond("202 Accepted", "", "text/plain", String::new()),
+                            Some(reply) => {
+                                let session = if body["method"] == "initialize" { "mcp-session-id: sess-1\r\n" } else { "" };
+                                if mode == Mode::Sse {
+                                    let ev = format!(
+                                        "event: message\ndata: {{\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}}\n\nevent: message\ndata: {reply}\n\n"
+                                    );
+                                    respond("200 OK", session, "text/event-stream", ev)
+                                } else {
+                                    respond("200 OK", session, "application/json", reply.to_string())
+                                }
+                            }
+                        }
+                    };
+                    let _ = sock.write_all(out.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        url
+    }
+
+    #[tokio::test]
+    async fn json_responses_session_headers_and_close() {
+        let seen = Seen::default();
+        let url = serve(Mode::Json, seen.clone()).await;
+        let cfg = HttpConfig::new(url).bearer(Secret::new("tok-123")).header("x-extra", Secret::new("e1"));
+        let client = Client::connect(HttpTransport::new(&cfg).unwrap(), options(5000)).await.unwrap();
+        assert_eq!(client.hello().name, "http-mock");
+        assert_eq!(client.list_tools().await.unwrap().len(), 3);
+        let r = client.call_tool("echo", json!({"text": "over http"})).await.unwrap();
+        assert_eq!(r.structured, Some(json!({"echo": "over http"})));
+        client.close().await;
+        let reqs = seen.reqs.lock().unwrap().clone();
+        assert!(reqs.iter().all(|(_, h, _)| h.contains("authorization: bearer tok-123") && h.contains("x-extra: e1")));
+        assert!(reqs.iter().filter(|(m, _, _)| m == "post").all(|(_, h, _)| h.contains("application/json, text/event-stream")));
+        // The first request has no session; later ones carry it plus the protocol version.
+        assert!(!reqs[0].1.contains("mcp-session-id"));
+        assert!(reqs[1..].iter().all(|(_, h, _)| h.contains("mcp-session-id: sess-1")));
+        assert!(reqs[1..].iter().all(|(_, h, _)| h.contains("mcp-protocol-version: 2025-06-18")));
+        assert_eq!(reqs.last().unwrap().0, "delete");
+        assert!(!format!("{cfg:?}").contains("tok-123"));
+    }
+
+    #[tokio::test]
+    async fn sse_responses_skip_other_events() {
+        let url = serve(Mode::Sse, Seen::default()).await;
+        let client = Client::connect(HttpTransport::new(&HttpConfig::new(url)).unwrap(), options(5000)).await.unwrap();
+        assert_eq!(client.list_tools().await.unwrap().len(), 3);
+        assert!(!client.call_tool("echo", json!({"text": "s"})).await.unwrap().is_error);
+    }
+
+    #[tokio::test]
+    async fn http_errors_are_reported_without_leaking_the_token() {
+        let url = serve(Mode::Unauthorized, Seen::default()).await;
+        let t = HttpTransport::new(&HttpConfig::new(url).bearer(Secret::new("tok-123"))).unwrap();
+        let e = Client::connect(t, options(5000)).await.unwrap_err();
+        assert_eq!(e, ClientError::Http { status: 401, body: "nope".into() });
+        assert!(!e.to_string().contains("tok-123"));
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_server_is_an_io_error_and_bad_headers_are_rejected() {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/mcp", l.local_addr().unwrap());
+        drop(l);
+        let e = Client::connect(HttpTransport::new(&HttpConfig::new(url)).unwrap(), options(5000)).await.unwrap_err();
+        assert!(matches!(e, ClientError::Io(_)), "{e:?}");
+        assert!(HttpTransport::new(&HttpConfig::new("http://x").header("bad name", Secret::new("v"))).is_err());
+        assert!(HttpTransport::new(&HttpConfig::new("http://x").bearer(Secret::new("a\nb"))).is_err());
+    }
+}

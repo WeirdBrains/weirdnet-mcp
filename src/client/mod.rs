@@ -6,7 +6,7 @@
 //! pending request.
 //!
 //! Transports: [`StdioTransport`] (a local command, or any async reader/writer pair) and, with
-//! the same feature, `HttpTransport` (streamable HTTP, JSON or SSE responses).
+//! the same feature, [`HttpTransport`] (streamable HTTP, JSON or SSE responses).
 //!
 //! Security notes:
 //! - A local-command server runs with the user's permissions. [`StdioCommand::warning`] gives
@@ -24,8 +24,10 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 mod child;
+mod http;
 
 pub use child::{StdioCommand, StdioTransport};
+pub use http::{HttpConfig, HttpTransport};
 
 use crate::PROTOCOL_VERSIONS;
 
