@@ -9,11 +9,14 @@
 //!   `openWorldHint` annotations, and an auth flag that adds "Requires a bearer token." to the
 //!   description.
 //! - [`args`]: typed argument getters with uniform error messages.
+//! - `client` (cargo feature, off by default): an MCP *client* for stdio and streamable HTTP servers.
 //! - [`stdio`]: the `<app>ctl mcp` loop that forwards stdio messages to a remote server.
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod args;
+#[cfg(feature = "client")]
+pub mod client;
 pub mod stdio;
 
 use serde_json::{Value, json};

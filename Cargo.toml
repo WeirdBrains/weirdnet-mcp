@@ -13,5 +13,15 @@ keywords = ["mcp", "json-rpc", "agents", "tools", "weirdnet"]
 categories = ["network-programming"]
 include = ["src/**", "README.md", "CHANGELOG.md", "LICENSE"]
 
+[features]
+default = []
+# MCP client (stdio and streamable HTTP transports). Off by default; the server API does not need it.
+client = ["dep:tokio", "dep:async-trait"]
+
 [dependencies]
 serde_json = "1"
+async-trait = { version = "0.1", optional = true }
+tokio = { version = "1", optional = true, features = ["rt", "sync", "time", "io-util", "process", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "io-util", "process", "macros", "net"] }
