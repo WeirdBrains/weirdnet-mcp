@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-18
+
 ### Changed
 
 - **Breaking for `agent` users:** the `agent` feature now depends on weirdnet-agent `=0.2.0` (was `=0.1.0`), so `McpSource` implements the 0.2.0 `ToolSource` and apps on weirdnet-agent 0.2.0 get a single copy of the trait. No source changes were needed here. The server API and the `client` feature are unchanged.
