@@ -5,9 +5,6 @@ helpers = "0.3.2"
 project = "weirdnet-mcp"
 next = ["docs.rs builds https://docs.rs/weirdnet-mcp/{version} from the crates.io upload"]
 
-[env]
-CARGO_TARGET_DIR = "/path/to/scratch/scratch/weirdnet-mcp/cargo-target"
-
 [[files]]
 kind = "cargo-package"
 paths = ["Cargo.toml"]
