@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-20
+
 ### Changed
 
 - The `agent` feature takes `weirdnet-agent` 0.4 or 0.5 (`">=0.4, <0.6"`); no API changes.
