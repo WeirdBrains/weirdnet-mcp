@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-20
+
 ### Changed
 
 - Metadata and docs scrub; no API changes.
