@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- Async tools: `Tools::call_async` returns a `CallToolResult`; `Server::handle_async` and `handle_raw_async` serve it. Sync `Tools::call` keeps working and now has a default.
+- Image, audio, resource-link and embedded-resource tool results (`CallToolResult`, `Content`), with `data:` URL and audio-format helpers matching weirdnet-agent 0.5 content parts.
+- Resources: `resources/list`, `resources/templates/list` and `resources/read` through optional `Tools` methods.
+- Parameter types `Any`, `Enum`, `Array`, `Object`, `AnyOf` and `Json`; `ToolSpec::check` for tool tables.
+- MCP 2026-07-28 requests (per-request `_meta`), `server/discover`, `resultType`, server identity and caching hints (`Tools::cache_hint`), alongside the `initialize`-based versions.
+- `stdio::serve_blocking`, and `stdio::serve` / `serve_with` (feature `stdio-server`) with concurrent requests and cancellation.
+- Streamable HTTP endpoint (feature `http-server`) with bearer auth and `Host` / `Origin` checks, and an axum 0.8 route (feature `axum`).
+
+### Changed
+
+- **Breaking:** `ParamType` has new variants and is `#[non_exhaustive]`.
+- `initialize` also negotiates 2025-11-25, now the newest legacy version (and the one the client asks for). Other legacy output is unchanged.
+
 ## [0.5.3] - 2026-11-20
 
 ### Changed

@@ -439,7 +439,7 @@ mod http {
         // The first request has no session; later ones carry it plus the protocol version.
         assert!(!reqs[0].1.contains("mcp-session-id"));
         assert!(reqs[1..].iter().all(|(_, h, _)| h.contains("mcp-session-id: sess-1")));
-        assert!(reqs[1..].iter().all(|(_, h, _)| h.contains("mcp-protocol-version: 2025-06-18")));
+        assert!(reqs[1..].iter().all(|(_, h, _)| h.contains(&format!("mcp-protocol-version: {}", crate::PROTOCOL_VERSIONS[0]))));
         assert_eq!(reqs.last().unwrap().0, "delete");
         assert!(!format!("{cfg:?}").contains("tok-123"));
     }

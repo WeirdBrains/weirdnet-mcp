@@ -3,7 +3,7 @@ name = "weirdnet-mcp"
 version = "0.5.3"
 edition = "2024"
 rust-version = "1.99"
-description = "Weirdnet MCP: a transport-agnostic Model Context Protocol (JSON-RPC 2.0) tools server with tool specs, annotations, argument helpers and a stdio-to-HTTP bridge loop (extracted from TAUR)."
+description = "Weirdnet MCP: a stateless Model Context Protocol (JSON-RPC 2.0) server for tools and resources, with sync or async tools, rich input schemas, image and audio results, stdio and streamable HTTP servers, and an MCP client."
 authors = ["Weird Brains LLC"]
 license = "BSD-3-Clause"
 repository = "https://github.com/WeirdBrains/weirdnet-mcp"
@@ -19,14 +19,32 @@ default = []
 client = ["dep:tokio", "dep:async-trait", "dep:reqwest"]
 # `weirdnet_agent::ToolSource` for an MCP server (implies `client`).
 agent = ["client", "dep:weirdnet-agent"]
+# `stdio::serve`: a tokio stdio server loop with concurrent requests and cancellation.
+stdio-server = ["dep:tokio"]
+# `http`: streamable HTTP with bearer auth and Host/Origin checks, for any `http`-crate framework.
+http-server = ["dep:http"]
+# `http::route` / `http::router` for axum 0.8 (implies `http-server`).
+axum = ["http-server", "dep:axum"]
 
 [dependencies]
 serde_json = "1"
+base64 = "0.22"
 async-trait = { version = "0.1", optional = true }
 reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls"] }
 tokio = { version = "1", optional = true, features = ["rt", "sync", "time", "io-util", "process", "macros"] }
+http = { version = "1", optional = true }
+axum = { version = "0.8", optional = true, default-features = false }
 
 weirdnet-agent = { version = ">=0.4, <0.6", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "io-util", "process", "macros", "net"] }
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
+
+[[test]]
+name = "stdio_server"
+required-features = ["stdio-server"]
+
+[[test]]
+name = "http_server"
+required-features = ["axum"]
