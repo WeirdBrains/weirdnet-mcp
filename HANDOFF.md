@@ -40,6 +40,6 @@ with JSON); Windows.
 are not served (the server is stateless); prompts; `outputSchema` and tool `title`/`icons`;
 `x-mcp-header`; the client still speaks only the `initialize` era.
 
-**What's next:** Michael picks the version (proposed 0.6.0, because `ParamType` gains variants),
+**What's next:** m3talsmith picks the version (proposed 0.6.0, because `ParamType` gains variants),
 then merge to main and release with `scripts/weirdnet_release.py`; Ymir and Bragi drop their
 local `rpc.rs` workaround.
