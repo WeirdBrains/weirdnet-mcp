@@ -1,6 +1,6 @@
 [package]
 name = "weirdnet-mcp"
-version = "0.5.3"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.99"
 description = "Weirdnet MCP: a stateless Model Context Protocol (JSON-RPC 2.0) server for tools and resources, with sync or async tools, rich input schemas, image and audio results, stdio and streamable HTTP servers, and an MCP client."

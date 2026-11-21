@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-21
+
 ### Added
 
 - Async tools: `Tools::call_async` returns a `CallToolResult`; `Server::handle_async` and `handle_raw_async` serve it. Sync `Tools::call` keeps working and now has a default.
