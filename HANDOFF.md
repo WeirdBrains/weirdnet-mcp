@@ -3,6 +3,23 @@
 Running notes for whoever picks this repo up next, newest first. Rules for this file are in the
 collective [AGENTS.md](https://github.com/WeirdBrains/weirdnet-agents/blob/main/AGENTS.md).
 
+## 2026-11-21: release 0.6.0
+
+**What changed:** the `mcp-gaps` work (`4258a5d`, `7a5e2de`, `6428ed4`) was fast-forwarded onto
+main (CI green on `6428ed4`) and released as 0.6.0 with `scripts/weirdnet_release.py` (commit
+`release: v0.6.0`, annotated tag `v0.6.0`, published to [crates.io](https://crates.io/crates/weirdnet-mcp/0.6.0);
+docs at [docs.rs](https://docs.rs/weirdnet-mcp/0.6.0)). 0.6.0 is breaking only because `ParamType`
+gained variants and is `#[non_exhaustive]`; see [CHANGELOG.md](CHANGELOG.md).
+
+**Checks run:** the release script's checks from `release.toml` (fmt, clippy `--all-features
+-D warnings`, `cargo test --all-features`, `cargo doc -D warnings`), then the crates.io upload.
+
+**Not tested:** as in the entry below (real MCP hosts, HTTP/2, Windows).
+
+**What's left:** as in the entry below.
+
+**What's next:** Ymir and Bragi move to 0.6 and drop their local MCP front end.
+
 ## 2026-11-21: MCP server gaps for Ymir and Bragi (branch `mcp-gaps`, unreleased)
 
 **What changed** (commit `4258a5d`, on branch [`mcp-gaps`](https://github.com/WeirdBrains/weirdnet-mcp/tree/mcp-gaps), not on main and not released):
