@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Prompts: `prompts/list` and `prompts/get` through optional `Tools::prompts` and `Tools::get_prompt`, with `PromptSpec`, `PromptArg`, `GetPromptResult`, `PromptMessage`, `Role` and `PromptError`. The `prompts` capability is advertised only when a server has prompts.
+- `Content` converts from `&str` and `String` (text).
+
 ## [0.6.0] - 2026-11-21
 
 ### Added

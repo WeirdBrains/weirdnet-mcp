@@ -1,7 +1,7 @@
 # weirdnet-mcp
 
-A stateless [Model Context Protocol](https://modelcontextprotocol.io) server for tools and
-resources, plus an MCP client. Extracted from TAUR and shared by
+A stateless [Model Context Protocol](https://modelcontextprotocol.io) server for tools,
+resources and prompts, plus an MCP client. Extracted from TAUR and shared by
 [Weird Brains](https://weirdbrains.com) apps (Salty Gull, Ymir, Bragi).
 
 The server is dual-era. It answers legacy clients that open with `initialize` (protocol
@@ -14,15 +14,23 @@ produced.
 
 - `Server::handle` (sync) or `Server::handle_async` takes one decoded JSON-RPC 2.0 message (or a
   batch) plus the caller's bearer token and returns the reply, or nothing for notifications.
-  Methods: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, and with resources
-  `resources/list`, `resources/templates/list`, `resources/read`.
+  Methods: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, with resources
+  `resources/list`, `resources/templates/list`, `resources/read`, and with prompts
+  `prompts/list`, `prompts/get`.
 - `ToolSpec` / `Param` / `ParamType`: `const` tool tables with input schemas and `readOnlyHint`,
   `destructiveHint`, `openWorldHint`. Tools that need auth say "Requires a bearer token.".
   Parameter types: string, integer, number, boolean, string arrays, `Any`, `Enum`, `Array`,
   nested `Object`, `AnyOf`, and `Json` (a raw schema). `ToolSpec::check` finds mistakes in a table.
 - `Tools` is the app side. Implement `call` (sync, returns JSON) or `call_async` (async, returns a
   `CallToolResult`). Failures become `isError` tool results. Optional: `has_resources`,
-  `list_resources`, `resource_templates`, `read_resource`, `cache_hint`.
+  `list_resources`, `resource_templates`, `read_resource`, `cache_hint`, `prompts`, `get_prompt`.
+- Prompts ([MCP prompts](https://modelcontextprotocol.io/specification/2026-07-28/server/prompts)):
+  `PromptSpec` / `PromptArg` are `const` prompt tables (`PromptSpec::check` finds mistakes), and
+  `Tools::get_prompt` returns a `GetPromptResult` of `PromptMessage`s (user or assistant, any
+  `Content`). The `prompts` capability is advertised only when `Tools::prompts` is not empty.
+  The server answers unknown prompts and missing or non-string arguments with `-32602` before
+  the app runs; `PromptError::NotFound` (hide a prompt from this caller), `InvalidArguments` and
+  `Failed` (`-32603`) cover the rest.
 - `CallToolResult` / `Content`: text, `image` and `audio` (base64 `data` plus `mimeType`),
   `resource_link`, embedded resources, and `structuredContent`. `Content::from_data_url`,
   `data_url`, `audio_format` and `format` convert to and from the `data:` URLs and audio formats

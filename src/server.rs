@@ -7,8 +7,8 @@ use std::task::{Context, Poll, Waker};
 use serde_json::{Value, json};
 
 use crate::{
-    CallToolResult, MODERN_PROTOCOL_VERSIONS, PROTOCOL_VERSIONS, Resource, ResourceContents, ResourceError, ResourceTemplate, ToolSpec, codes, meta,
-    rpc_err, rpc_err_data, rpc_ok, tool_error,
+    CallToolResult, GetPromptResult, MODERN_PROTOCOL_VERSIONS, PROTOCOL_VERSIONS, PromptError, PromptSpec, Resource, ResourceContents, ResourceError,
+    ResourceTemplate, ToolSpec, codes, meta, rpc_err, rpc_err_data, rpc_ok, tool_error,
 };
 
 /// What `initialize` and `server/discover` report.
@@ -144,10 +144,34 @@ pub trait Tools {
     }
 
     /// Caching hints for a modern result of `method` (`server/discover`, `tools/list`,
-    /// `resources/list`, `resources/templates/list`, `resources/read`). Default: 0 ms, private.
+    /// `prompts/list`, `resources/list`, `resources/templates/list`, `resources/read`).
+    /// Default: 0 ms, private.
     fn cache_hint(&self, method: &str) -> CacheHint {
         let _ = method;
         CacheHint::default()
+    }
+
+    /// The prompt table for `prompts/list`, in a stable order. Default: none. The `prompts`
+    /// capability and `prompts/*` methods are offered only when this is not empty.
+    fn prompts(&self) -> &[PromptSpec] {
+        &[]
+    }
+
+    /// `prompts/get`: fills in `prompt` with `args` (a JSON object of strings) for a caller
+    /// presenting `token`. The server has already checked that `prompt` is in
+    /// [`prompts`](Tools::prompts) and that its required arguments are present; other checks
+    /// (permissions, argument values) are the app's. The default refuses.
+    fn get_prompt<'a>(
+        &'a self,
+        prompt: &'a PromptSpec,
+        args: &'a Value,
+        token: Option<&'a str>,
+    ) -> impl Future<Output = Result<GetPromptResult, PromptError>> + Send + 'a
+    where
+        Self: Sized,
+    {
+        let _ = (args, token);
+        ready(Err(PromptError::Failed(format!("prompt {} is not implemented", prompt.name))))
     }
 }
 
@@ -186,7 +210,7 @@ pub(crate) fn request_era(method: &str, params: &Value) -> Result<Era, ProtocolE
     Ok(Era::Modern)
 }
 
-const CACHEABLE: &[&str] = &["server/discover", "tools/list", "resources/list", "resources/templates/list", "resources/read"];
+const CACHEABLE: &[&str] = &["server/discover", "tools/list", "prompts/list", "resources/list", "resources/templates/list", "resources/read"];
 
 /// The MCP server.
 pub struct Server<T> {
@@ -278,11 +302,15 @@ impl<T: Tools> Server<T> {
         if self.tools.has_resources() {
             caps["resources"] = json!({"subscribe": false, "listChanged": false});
         }
+        if !self.tools.prompts().is_empty() {
+            caps["prompts"] = json!({"listChanged": false});
+        }
         caps
     }
 
     async fn dispatch(&self, token: Option<&str>, id: Value, method: &str, params: &Value, era: Era) -> Value {
         let resources = self.tools.has_resources();
+        let prompts = !self.tools.prompts().is_empty();
         match method {
             "initialize" => {
                 let asked = params["protocolVersion"].as_str().unwrap_or("");
@@ -315,6 +343,26 @@ impl<T: Tools> Server<T> {
                 match self.tools.call_async(tool, &args, token).await {
                     Ok(r) => rpc_ok(id, r.to_json()),
                     Err(ToolError(text)) => rpc_ok(id, tool_error(&text)),
+                }
+            }
+            "prompts/list" if prompts => rpc_ok(id, json!({"prompts": self.tools.prompts().iter().map(PromptSpec::to_json).collect::<Vec<_>>()})),
+            "prompts/get" if prompts => {
+                let Some(name) = params["name"].as_str() else {
+                    return rpc_err(id, codes::INVALID_PARAMS, "missing string parameter \"name\"");
+                };
+                let Some(prompt) = self.tools.prompts().iter().find(|p| p.name == name) else {
+                    return rpc_err(id, codes::INVALID_PARAMS, &format!("unknown prompt: {name}"));
+                };
+                let args = params.get("arguments").cloned().unwrap_or(json!({}));
+                if let Err(m) = prompt.check_arguments(&args) {
+                    return rpc_err(id, codes::INVALID_PARAMS, &m);
+                }
+                let args = if args.is_null() { json!({}) } else { args };
+                match self.tools.get_prompt(prompt, &args, token).await {
+                    Ok(r) => rpc_ok(id, r.to_json()),
+                    Err(PromptError::NotFound) => rpc_err(id, codes::INVALID_PARAMS, &format!("unknown prompt: {name}")),
+                    Err(PromptError::InvalidArguments(m)) => rpc_err(id, codes::INVALID_PARAMS, &m),
+                    Err(PromptError::Failed(m)) => rpc_err(id, codes::INTERNAL, &m),
                 }
             }
             "resources/list" if resources => match self.tools.list_resources(token).await {

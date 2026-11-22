@@ -577,3 +577,152 @@ fn tools_stays_dyn_compatible() {
     assert!(!tools.has_resources());
     assert_eq!(tools.cache_hint("tools/list"), CacheHint::default());
 }
+
+// ---- prompts ----
+
+const PROMPTS: &[PromptSpec] = &[
+    PromptSpec::new("review", "Reviews code.", &[PromptArg::required("code", "The code"), PromptArg::optional("focus", "")])
+        .with_title("Code review"),
+    PromptSpec::new("hello", "", &[]),
+    PromptSpec::new("secret", "Needs a token.", &[]),
+];
+
+struct WithPrompts;
+
+impl Tools for WithPrompts {
+    fn specs(&self) -> &[ToolSpec] {
+        SPECS
+    }
+
+    fn prompts(&self) -> &[PromptSpec] {
+        PROMPTS
+    }
+
+    async fn get_prompt<'a>(&'a self, prompt: &'a PromptSpec, args: &'a Value, token: Option<&'a str>) -> Result<GetPromptResult, PromptError> {
+        match prompt.name {
+            "review" => {
+                let code = args::string(args, "code").map_err(PromptError::InvalidArguments)?;
+                if code == "boom" {
+                    return Err(PromptError::Failed("broken".into()));
+                }
+                Ok(GetPromptResult::new(vec![PromptMessage::user(format!("Review this:\n{code}"))])
+                    .with_description("Code review")
+                    .with(PromptMessage::assistant(Content::image("AA==", "image/png"))))
+            }
+            "secret" if token != Some("good") => Err(PromptError::NotFound),
+            "secret" => Ok(GetPromptResult::new(vec![PromptMessage::user("s")])),
+            _ => Ok(GetPromptResult::default()),
+        }
+    }
+}
+
+fn prompt_server() -> Server<WithPrompts> {
+    Server::new(ServerInfo { name: "p".into(), title: String::new(), version: "1".into(), instructions: String::new() }, WithPrompts)
+}
+
+#[test]
+fn prompt_table_check() {
+    assert!(PromptSpec::check(PROMPTS).is_ok());
+    const BAD: &[PromptSpec] = &[
+        PromptSpec::new("a", "", &[PromptArg::required("x", ""), PromptArg::optional("x", "")]),
+        PromptSpec::new("a", "", &[PromptArg::required("", "")]),
+        PromptSpec::new("", "", &[]),
+    ];
+    assert_eq!(
+        PromptSpec::check(BAD).unwrap_err(),
+        vec!["a.x: duplicate argument", "a: duplicate prompt", "a: an argument has no name", "a prompt has no name"]
+    );
+}
+
+#[test]
+fn prompts_capability_only_when_offered() {
+    // Without prompts: no capability and no methods, in either era (unchanged from 0.6.0).
+    let s = server();
+    let r = s.handle(None, req("initialize", json!({"protocolVersion": "2025-11-25"}))).unwrap();
+    assert!(r["result"]["capabilities"].get("prompts").is_none());
+    assert_eq!(s.handle(None, req("prompts/list", json!({}))).unwrap()["error"]["code"], -32601);
+    assert_eq!(s.handle(None, modern("prompts/get", json!({"name": "x"}))).unwrap()["error"]["code"], -32601);
+    // With prompts: advertised in initialize and server/discover.
+    let s = prompt_server();
+    let r = s.handle(None, req("initialize", json!({"protocolVersion": "2025-06-18"}))).unwrap();
+    assert_eq!(r["result"]["capabilities"], json!({"tools": {"listChanged": false}, "prompts": {"listChanged": false}}));
+    let r = s.handle(None, modern("server/discover", json!({}))).unwrap();
+    assert_eq!(r["result"]["capabilities"]["prompts"], json!({"listChanged": false}));
+    let tools: &dyn Tools = &WithPrompts;
+    assert_eq!(tools.prompts().len(), 3);
+}
+
+#[test]
+fn legacy_prompts_list_and_get() {
+    let s = prompt_server();
+    let r = s.handle(None, req("prompts/list", json!({}))).unwrap();
+    assert_eq!(
+        r["result"],
+        json!({"prompts": [
+            {"name": "review", "title": "Code review", "description": "Reviews code.", "arguments": [
+                {"name": "code", "description": "The code", "required": true},
+                {"name": "focus", "required": false},
+            ]},
+            {"name": "hello"},
+            {"name": "secret", "description": "Needs a token."},
+        ]})
+    );
+    let r = s.handle(None, req("prompts/get", json!({"name": "review", "arguments": {"code": "fn main() {}"}}))).unwrap();
+    assert_eq!(
+        r["result"],
+        json!({"description": "Code review", "messages": [
+            {"role": "user", "content": {"type": "text", "text": "Review this:\nfn main() {}"}},
+            {"role": "assistant", "content": {"type": "image", "data": "AA==", "mimeType": "image/png"}},
+        ]})
+    );
+    let r = s.handle(None, req("prompts/get", json!({"name": "hello"}))).unwrap();
+    assert_eq!(r["result"], json!({"messages": []}));
+}
+
+#[test]
+fn prompt_errors() {
+    let s = prompt_server();
+    let err = |params: Value, token: Option<&str>| s.handle(token, req("prompts/get", params)).unwrap()["error"].clone();
+    assert_eq!(err(json!({}), None), json!({"code": -32602, "message": "missing string parameter \"name\""}));
+    assert_eq!(err(json!({"name": "nope"}), None), json!({"code": -32602, "message": "unknown prompt: nope"}));
+    assert_eq!(err(json!({"name": "review"}), None), json!({"code": -32602, "message": "missing required argument \"code\""}));
+    assert_eq!(
+        err(json!({"name": "review", "arguments": {"code": 1}}), None),
+        json!({"code": -32602, "message": "prompt argument \"code\" must be a string"})
+    );
+    assert_eq!(err(json!({"name": "review", "arguments": ["x"]}), None)["code"], -32602);
+    assert_eq!(err(json!({"name": "review", "arguments": {"code": "boom"}}), None), json!({"code": -32603, "message": "broken"}));
+    // The app hides a prompt from a caller without a token.
+    assert_eq!(err(json!({"name": "secret"}), None), json!({"code": -32602, "message": "unknown prompt: secret"}));
+    assert_eq!(s.handle(Some("good"), req("prompts/get", json!({"name": "secret"}))).unwrap()["result"]["messages"][0]["content"]["text"], "s");
+}
+
+#[test]
+fn modern_prompts_have_result_type_and_cache_hints() {
+    let s = prompt_server();
+    let r = s.handle(None, modern("prompts/list", json!({}))).unwrap();
+    assert_eq!(r["result"]["resultType"], "complete");
+    assert_eq!(r["result"]["prompts"].as_array().unwrap().len(), 3);
+    assert_eq!((r["result"]["ttlMs"].clone(), r["result"]["cacheScope"].clone()), (json!(0), json!("private")));
+    let r = s.handle(None, modern("prompts/get", json!({"name": "review", "arguments": {"code": "x"}}))).unwrap();
+    assert_eq!(r["result"]["resultType"], "complete");
+    assert!(r["result"].get("ttlMs").is_none());
+    assert_eq!(r["result"]["_meta"][meta::SERVER_INFO]["name"], "p");
+    assert_eq!(r["result"]["messages"][0]["role"], "user");
+}
+
+#[test]
+fn a_prompt_table_without_get_prompt_fails_cleanly() {
+    struct ListOnly;
+    impl Tools for ListOnly {
+        fn specs(&self) -> &[ToolSpec] {
+            &[]
+        }
+        fn prompts(&self) -> &[PromptSpec] {
+            PROMPTS
+        }
+    }
+    let s = Server::new(ServerInfo { name: "l".into(), title: String::new(), version: "1".into(), instructions: String::new() }, ListOnly);
+    let r = s.handle(None, req("prompts/get", json!({"name": "hello"}))).unwrap();
+    assert_eq!(r["error"], json!({"code": -32603, "message": "prompt hello is not implemented"}));
+}

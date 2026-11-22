@@ -1,4 +1,4 @@
-//! A small Model Context Protocol tools server.
+//! A small Model Context Protocol tools server, with resources and prompts.
 //!
 //! The crate speaks MCP's JSON-RPC 2.0 messages. A front end passes each decoded message to
 //! [`Server::handle`] (sync tools) or [`Server::handle_async`] (async tools) with the caller's
@@ -11,7 +11,10 @@
 //!   `destructiveHint` and `openWorldHint` annotations, nested objects, enums, arrays and `anyOf`,
 //!   and an auth flag that adds "Requires a bearer token." to the description.
 //! - [`Tools`]: the app side. `call` (sync) or `call_async` (async), plus optional resources
-//!   (`list_resources`, `resource_templates`, `read_resource`).
+//!   (`list_resources`, `resource_templates`, `read_resource`) and prompts (`prompts`,
+//!   `get_prompt`).
+//! - [`PromptSpec`] / [`PromptArg`] / [`GetPromptResult`] / [`PromptMessage`]: prompt tables and
+//!   filled-in prompts for `prompts/list` and `prompts/get`.
 //! - [`CallToolResult`] / [`Content`]: tool results with text, image, audio, resource links and
 //!   embedded resources.
 //! - [`args`]: typed argument getters with uniform error messages.
@@ -33,10 +36,12 @@ pub mod client;
 mod content;
 #[cfg(feature = "http-server")]
 pub mod http;
+mod prompts;
 mod server;
 pub mod stdio;
 
 pub use content::{CallToolResult, Content, Resource, ResourceBody, ResourceContents, ResourceError, ResourceTemplate};
+pub use prompts::{GetPromptResult, PromptArg, PromptError, PromptMessage, PromptSpec, Role};
 pub use server::{CacheHint, CacheScope, Server, ServerInfo, ToolError, Tools};
 
 use serde_json::{Value, json};
@@ -67,7 +72,8 @@ pub mod codes {
     pub const INVALID_REQUEST: i64 = -32600;
     /// Method not found.
     pub const METHOD_NOT_FOUND: i64 = -32601;
-    /// Invalid params (unknown tool, missing `_meta` fields, and resource not found on modern requests).
+    /// Invalid params (unknown tool or prompt, missing prompt arguments, missing `_meta` fields,
+    /// and resource not found on modern requests).
     pub const INVALID_PARAMS: i64 = -32602;
     /// Internal error.
     pub const INTERNAL: i64 = -32603;
