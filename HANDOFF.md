@@ -3,6 +3,21 @@
 Running notes for whoever picks this repo up next, newest first. Rules for this file are in the
 collective [AGENTS.md](https://github.com/WeirdBrains/weirdnet-agents/blob/main/AGENTS.md).
 
+## 2026-11-22: release 0.6.1
+
+**What changed:** `a777432` (CI green) released as 0.6.1 with `scripts/weirdnet_release.py` (commit
+`release: v0.6.1`, annotated tag [v0.6.1](https://github.com/WeirdBrains/weirdnet-mcp/releases/tag/v0.6.1)),
+published to [crates.io](https://crates.io/crates/weirdnet-mcp/0.6.1); docs at
+[docs.rs](https://docs.rs/weirdnet-mcp/0.6.1). Additive (prompts), so a patch release; see [CHANGELOG.md](CHANGELOG.md).
+
+**Checks run:** the release script's checks from `release.toml`, then the crates.io upload.
+
+**Not tested:** as in the entry below.
+
+**What's left:** nothing for this release.
+
+**What's next:** Bragi's MCP server serves its prompts with 0.6.1.
+
 ## 2026-11-22: prompts (main, unreleased)
 
 **What changed** (`db17faa`): MCP [prompts](https://modelcontextprotocol.io/specification/2026-07-28/server/prompts).
