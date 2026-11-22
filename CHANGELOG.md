@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-22
+
 ### Added
 
 - Prompts: `prompts/list` and `prompts/get` through optional `Tools::prompts` and `Tools::get_prompt`, with `PromptSpec`, `PromptArg`, `GetPromptResult`, `PromptMessage`, `Role` and `PromptError`. The `prompts` capability is advertised only when a server has prompts.
