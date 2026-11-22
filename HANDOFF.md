@@ -3,6 +3,30 @@
 Running notes for whoever picks this repo up next, newest first. Rules for this file are in the
 collective [AGENTS.md](https://github.com/WeirdBrains/weirdnet-agents/blob/main/AGENTS.md).
 
+## 2026-11-22: prompts (main, unreleased)
+
+**What changed** (`db17faa`): MCP [prompts](https://modelcontextprotocol.io/specification/2026-07-28/server/prompts).
+`Tools::prompts` (a `const` `PromptSpec` / `PromptArg` table, default empty) and
+`Tools::get_prompt` (async, default refuses) serve `prompts/list` and `prompts/get` in both the
+`initialize` era and 2026-07-28. The `prompts` capability is advertised only when the table is
+not empty. The server answers a missing or unknown name and missing or non-string arguments
+with `-32602` before the app runs; `PromptError` covers hidden prompts (`-32602`), bad argument
+values (`-32602`) and failures (`-32603`). Modern `prompts/list` results carry caching hints.
+`Content` converts from `&str` and `String`. Servers without prompts answer exactly as in 0.6.0.
+
+**Checks run:** `cargo fmt --check`, `cargo clippy --all-targets -D warnings` (default and all
+features), `cargo test` (default, all features, no default features), `cargo doc -D warnings`,
+`cargo package --locked`. [cargo-semver-checks](https://crates.io/crates/cargo-semver-checks)
+against 0.6.0: no semver update required, so the next release can be 0.6.1.
+
+**Not tested:** real MCP hosts listing or running prompts; `prompts/get` over the HTTP route
+(the `Mcp-Name` header check for it predates this change and is covered by its own tests).
+
+**What's left:** release 0.6.1 once m3talsmith approves the version; update the mcp guide on
+[net.weirdbrains.com](https://net.weirdbrains.com) with the release.
+
+**What's next:** Bragi's MCP server lists its prompts through `Tools::prompts`.
+
 ## 2026-11-21: release 0.6.0
 
 **What changed:** the `mcp-gaps` work (`4258a5d`, `7a5e2de`, `6428ed4`) was fast-forwarded onto
