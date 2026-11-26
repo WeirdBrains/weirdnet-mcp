@@ -3,7 +3,24 @@
 Running notes for whoever picks this repo up next, newest first. Rules for this file are in the
 collective [AGENTS.md](https://github.com/WeirdBrains/weirdnet-agents/blob/main/AGENTS.md).
 
-## 2026-11-26: parsing image and audio tool results (main, unreleased)
+## 2026-11-26: release 0.6.2
+
+**What changed:** `e41b28c` and `5589827` (CI green on Linux, macOS and Windows) released as
+0.6.2 with `scripts/weirdnet_release.py --patch` (commit `release: v0.6.2`, annotated tag
+[v0.6.2](https://github.com/WeirdBrains/weirdnet-mcp/releases/tag/v0.6.2)), published to
+[crates.io](https://crates.io/crates/weirdnet-mcp/0.6.2); docs at
+[docs.rs](https://docs.rs/weirdnet-mcp/0.6.2). Additive (cargo-semver-checks: no semver update
+required), so a patch release; see [CHANGELOG.md](CHANGELOG.md).
+
+**Checks run:** the release script's checks from `release.toml`, then the crates.io upload.
+
+**Not tested:** as in the entry below.
+
+**What's left:** nothing for this release.
+
+**What's next:** Ymir and Bragi read `video_frames` image blocks with `call_tool_content`.
+
+## 2026-11-26: parsing image and audio tool results
 
 **What changed** (`e41b28c`): the client side of image and audio content
 blocks in tool results, for video frame tools (`video_frames` returns frames as images).
@@ -27,7 +44,7 @@ update required, so the next release is 0.6.2).
 **Not tested:** real MCP hosts sending images or audio to the client; large (multi-MB) media
 blocks over stdio or HTTP.
 
-**What's left:** release 0.6.2 once CI is green.
+**What's left:** released as 0.6.2 (entry above).
 
 **What's next:** `ymirctl mcp` and `bragi mcp` return `video_frames` as image blocks.
 
