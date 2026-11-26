@@ -320,6 +320,8 @@ async fn spawning_a_missing_command_fails_cleanly() {
     assert!(matches!(e, ClientError::Spawn(_)), "{e:?}");
 }
 
+// Uses POSIX `sh` / `true`.
+#[cfg(unix)]
 #[tokio::test]
 async fn a_command_that_exits_reports_closed() {
     let t = StdioTransport::spawn(&StdioCommand::new("true")).unwrap();
@@ -327,6 +329,8 @@ async fn a_command_that_exits_reports_closed() {
     assert!(matches!(e, ClientError::Closed | ClientError::Io(_)), "{e:?}");
 }
 
+// Uses POSIX `sh` / `true`.
+#[cfg(unix)]
 #[tokio::test]
 async fn talks_to_a_real_child_process_with_secret_env() {
     // A tiny shell "server": answers initialize (id 1), swallows the initialized notification and
