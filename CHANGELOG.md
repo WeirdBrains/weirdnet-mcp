@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-26
+
 ### Added
 
 - Parsing tool results: `CallToolResult::from_json` and `Content::from_json` (text, image, audio, resource links and embedded resources), plus `Resource::from_json` and `ResourceContents::from_json`.
