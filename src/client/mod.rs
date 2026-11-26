@@ -1,7 +1,8 @@
 //! An MCP client (cargo feature `client`, off by default).
 //!
 //! [`Client::connect`] runs `initialize` over a [`Transport`] and then offers `tools/list`
-//! ([`Client::list_tools`]) and `tools/call` ([`Client::call_tool`]). Every request has a timeout
+//! ([`Client::list_tools`]) and `tools/call` ([`Client::call_tool`] for text, or
+//! [`Client::call_tool_content`] to keep image, audio and resource blocks). Every request has a timeout
 //! and can be cancelled; both send MCP's `notifications/cancelled` to the server and free the
 //! pending request.
 //!
@@ -29,7 +30,7 @@ mod http;
 pub use child::{DEFAULT_MAX_LINE, StdioCommand, StdioTransport};
 pub use http::{HttpConfig, HttpTransport};
 
-use crate::PROTOCOL_VERSIONS;
+use crate::{CallToolResult, PROTOCOL_VERSIONS};
 
 /// A secret string (token, environment value). `Debug` is redacted; there is no `Display`
 /// or serialisation.
@@ -201,7 +202,8 @@ pub struct RemoteTool {
 /// The result of `tools/call`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolResult {
-    /// Text content joined by newlines. Non-text items appear as `[<type> content omitted]`.
+    /// Text content joined by newlines. Non-text items appear as `[<type> content omitted]`; use
+    /// [`Client::call_tool_content`] to keep images and audio.
     pub text: String,
     /// `structuredContent`, if any.
     pub structured: Option<Value>,
@@ -297,6 +299,27 @@ impl Client {
         let arguments = if arguments.is_null() { json!({}) } else { arguments };
         let result = self.rpc("tools/call", json!({"name": name, "arguments": arguments}), cancel).await?;
         Ok(parse_result(&result))
+    }
+
+    /// Calls a tool and keeps every content block: text, images and audio (base64 `data` plus
+    /// `mimeType`), resource links and embedded resources, in the server's order. See
+    /// [`CallToolResult::from_json`].
+    pub async fn call_tool_content(&self, name: &str, arguments: Value) -> Result<CallToolResult, ClientError> {
+        self.call_tool_content_until(name, arguments, std::future::pending()).await
+    }
+
+    /// [`call_tool_content`](Self::call_tool_content) that is abandoned (with
+    /// `notifications/cancelled`) if `cancel` resolves first, as in
+    /// [`call_tool_until`](Self::call_tool_until).
+    pub async fn call_tool_content_until(
+        &self,
+        name: &str,
+        arguments: Value,
+        cancel: impl Future<Output = ()>,
+    ) -> Result<CallToolResult, ClientError> {
+        let arguments = if arguments.is_null() { json!({}) } else { arguments };
+        let result = self.rpc("tools/call", json!({"name": name, "arguments": arguments}), cancel).await?;
+        Ok(CallToolResult::from_json(&result))
     }
 
     /// Ends the session (closes stdin and stops the process, or deletes the HTTP session).

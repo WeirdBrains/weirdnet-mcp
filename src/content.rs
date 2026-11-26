@@ -5,6 +5,9 @@
 //! from `data:` URLs ([`Content::from_data_url`], [`Content::data_url`]) and audio formats
 //! ([`Content::audio_format`], [`Content::format`]), which is how weirdnet-agent 0.5 `ContentPart`s
 //! carry them (`ContentPart::image(url)`, `ContentPart::audio(data, format)`).
+//!
+//! Clients parse results back with [`CallToolResult::from_json`] and [`Content::from_json`], and
+//! decode image and audio data with [`Content::decoded_bytes`].
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -131,6 +134,62 @@ impl Content {
             Self::Resource(c) => json!({"type": "resource", "resource": c.to_json()}),
         }
     }
+
+    /// Parses one MCP content block (the inverse of [`to_json`](Self::to_json)), as a client
+    /// receives it in a tool result: `{"type": "image", "data": <base64>, "mimeType": "image/png"}`,
+    /// `{"type": "audio", "data": <base64>, "mimeType": "audio/wav"}`, `text`, `resource_link` and
+    /// `resource`. Optional fields such as `annotations` and `_meta` are ignored. `None` for an
+    /// unknown `type` or a block without its required fields; `data` is not decoded here (see
+    /// [`decoded_bytes`](Self::decoded_bytes)).
+    pub fn from_json(v: &Value) -> Option<Self> {
+        let s = |key: &str| v.get(key).and_then(Value::as_str).map(str::to_string);
+        match v.get("type")?.as_str()? {
+            "text" => Some(Self::Text(s("text")?)),
+            "image" => Some(Self::image(s("data")?, s("mimeType")?)),
+            "audio" => Some(Self::audio(s("data")?, s("mimeType")?)),
+            "resource_link" => Resource::from_json(v).map(Self::ResourceLink),
+            "resource" => ResourceContents::from_json(v.get("resource")?).map(Self::Resource),
+            _ => None,
+        }
+    }
+
+    /// The text of a text item.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    /// Whether this is an image item.
+    pub fn is_image(&self) -> bool {
+        matches!(self, Self::Image { .. })
+    }
+
+    /// Whether this is an audio item.
+    pub fn is_audio(&self) -> bool {
+        matches!(self, Self::Audio { .. })
+    }
+
+    /// The MIME type of an image, audio, resource-link or embedded-resource item, if it has one.
+    pub fn mime_type(&self) -> Option<&str> {
+        match self {
+            Self::Image { mime_type, .. } | Self::Audio { mime_type, .. } => Some(mime_type),
+            Self::ResourceLink(r) => r.mime_type.as_deref(),
+            Self::Resource(c) => c.mime_type.as_deref(),
+            Self::Text(_) => None,
+        }
+    }
+
+    /// The decoded bytes of an image or audio item, or of an embedded resource's `blob`. `None`
+    /// for other items and for data that is not valid base64.
+    pub fn decoded_bytes(&self) -> Option<Vec<u8>> {
+        match self {
+            Self::Image { data, .. } | Self::Audio { data, .. } => STANDARD.decode(data).ok(),
+            Self::Resource(c) => c.decoded_bytes(),
+            _ => None,
+        }
+    }
 }
 
 /// A tool result: content items, optional `structuredContent`, and `isError`.
@@ -176,6 +235,24 @@ impl CallToolResult {
     pub fn with(mut self, item: Content) -> Self {
         self.content.push(item);
         self
+    }
+
+    /// Parses a `tools/call` result as a client receives it (the inverse of
+    /// [`to_json`](Self::to_json); not to be confused with [`json`](Self::json), which wraps a
+    /// value). Every content block [`Content::from_json`] understands is kept in order, including
+    /// images and audio; unknown or malformed blocks are skipped. A missing `content` is empty and
+    /// a missing `isError` is `false`.
+    pub fn from_json(v: &Value) -> Self {
+        Self {
+            content: v.get("content").and_then(Value::as_array).into_iter().flatten().filter_map(Content::from_json).collect(),
+            structured: v.get("structuredContent").filter(|s| !s.is_null()).cloned(),
+            is_error: v.get("isError").and_then(Value::as_bool).unwrap_or(false),
+        }
+    }
+
+    /// The text items, joined by newlines.
+    pub fn text(&self) -> String {
+        self.content.iter().filter_map(Content::as_text).collect::<Vec<_>>().join("\n")
     }
 
     /// The MCP JSON for this result.
@@ -252,6 +329,19 @@ impl Resource {
     pub fn with_size(mut self, size: u64) -> Self {
         self.size = Some(size);
         self
+    }
+
+    /// Parses a resource (or a `resource_link` content block): `uri` and `name` are required.
+    pub fn from_json(v: &Value) -> Option<Self> {
+        let s = |key: &str| v.get(key).and_then(Value::as_str).map(str::to_string);
+        Some(Self {
+            uri: s("uri")?,
+            name: s("name")?,
+            title: s("title"),
+            description: s("description"),
+            mime_type: s("mimeType"),
+            size: v.get("size").and_then(Value::as_u64),
+        })
     }
 
     /// The MCP JSON.
@@ -362,6 +452,26 @@ impl ResourceContents {
     /// Binary contents from raw bytes (base64-encoded here).
     pub fn bytes(uri: impl Into<String>, mime_type: Option<&str>, bytes: &[u8]) -> Self {
         Self::blob(uri, mime_type, STANDARD.encode(bytes))
+    }
+
+    /// Parses resource contents: `uri` and either `text` or `blob` (base64, not decoded here).
+    pub fn from_json(v: &Value) -> Option<Self> {
+        let uri = v.get("uri")?.as_str()?.to_string();
+        let mime_type = v.get("mimeType").and_then(Value::as_str).map(str::to_string);
+        let body = match (v.get("text").and_then(Value::as_str), v.get("blob").and_then(Value::as_str)) {
+            (Some(t), _) => ResourceBody::Text(t.to_string()),
+            (None, Some(b)) => ResourceBody::Blob(b.to_string()),
+            (None, None) => return None,
+        };
+        Some(Self { uri, mime_type, body })
+    }
+
+    /// The decoded bytes of a `blob` body (`None` for text or invalid base64).
+    pub fn decoded_bytes(&self) -> Option<Vec<u8>> {
+        match &self.body {
+            ResourceBody::Blob(b) => STANDARD.decode(b).ok(),
+            ResourceBody::Text(_) => None,
+        }
     }
 
     /// The MCP JSON.

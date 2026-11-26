@@ -163,6 +163,17 @@ async fn the_crate_client_talks_to_the_stdio_server() {
     assert_eq!(client.list_tools().await.unwrap().len(), 4);
     let r = client.call_tool("echo", json!({"text": "hi"})).await.unwrap();
     assert_eq!(r.structured, Some(json!({"echo": "hi"})));
+    // Image and audio blocks survive the round trip with their bytes.
+    let media = client.call_tool_content("picture", json!({})).await.unwrap();
+    assert_eq!(media, CallToolResult::new(vec![Content::image_bytes(b"GIF89a", "image/gif"), Content::audio("UklG", "audio/wav")]));
+    assert_eq!(media.content[0].decoded_bytes().as_deref(), Some(&b"GIF89a"[..]));
+    assert_eq!(media.content[1].format().as_deref(), Some("wav"));
+    // Text-only tools read the same through either call.
+    let text = client.call_tool_content("echo", json!({"text": "hi"})).await.unwrap();
+    assert_eq!((&text.structured, text.is_error), (&Some(json!({"echo": "hi"})), false));
+    assert_eq!(text.text(), serde_json::to_string_pretty(&json!({"echo": "hi"})).unwrap());
+    // The text view still notes what it leaves out.
+    assert_eq!(client.call_tool("picture", json!({})).await.unwrap().text, "[image content omitted]\n[audio content omitted]");
     client.close().await;
     tokio::time::timeout(Duration::from_secs(5), task).await.unwrap().unwrap().unwrap();
 }

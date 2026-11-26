@@ -3,6 +3,32 @@
 Running notes for whoever picks this repo up next, newest first. Rules for this file are in the
 collective [AGENTS.md](https://github.com/WeirdBrains/weirdnet-agents/blob/main/AGENTS.md).
 
+## 2026-11-26: parsing image and audio tool results (main, unreleased)
+
+**What changed** (this commit; parent `6caf470`): the client side of image and audio content
+blocks in tool results, for video frame tools (`video_frames` returns frames as images).
+Servers already sent `{"type": "image" | "audio", "data": <base64>, "mimeType": ...}`;
+clients can now read them back. `CallToolResult::from_json`, `Content::from_json`,
+`Resource::from_json` and `ResourceContents::from_json` parse the wire JSON (optional
+`annotations` and `_meta` are ignored; unknown or malformed blocks are skipped).
+`Content::decoded_bytes`, `mime_type`, `is_image`, `is_audio`, `as_text`,
+`CallToolResult::text` and `ResourceContents::decoded_bytes` read it.
+`Client::call_tool_content` / `call_tool_content_until` return the full `CallToolResult`;
+`call_tool` and `McpSource` are unchanged. Server output is unchanged.
+
+**Checks run:** `cargo fmt --check`, `cargo clippy --all-targets -D warnings` (default and all
+features), `cargo test` (default, all features, no default features), `cargo doc -D warnings`
+(default and all features), `cargo package --locked`, and
+[cargo-semver-checks](https://crates.io/crates/cargo-semver-checks) against 0.6.1 (no semver
+update required, so the next release is 0.6.2).
+
+**Not tested:** real MCP hosts sending images or audio to the client; large (multi-MB) media
+blocks over stdio or HTTP.
+
+**What's left:** release 0.6.2 once CI is green.
+
+**What's next:** `ymirctl mcp` and `bragi mcp` return `video_frames` as image blocks.
+
 ## 2026-11-22: release 0.6.1
 
 **What changed:** `a777432` (CI green) released as 0.6.1 with `scripts/weirdnet_release.py` (commit

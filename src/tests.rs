@@ -352,6 +352,151 @@ fn call_tool_result_json_matches_tool_ok() {
     );
 }
 
+#[test]
+fn content_blocks_round_trip_through_mcp_json() {
+    let png = b"\x89PNG\r\n\x1a\n";
+    let wav = b"RIFF\x24\x00\x00\x00WAVE";
+    let cases = [
+        (Content::text("two frames"), json!({"type": "text", "text": "two frames"})),
+        (Content::image_bytes(png, "image/png"), json!({"type": "image", "data": "iVBORw0KGgo=", "mimeType": "image/png"})),
+        (Content::audio_bytes(wav, "audio/wav"), json!({"type": "audio", "data": "UklGRiQAAABXQVZF", "mimeType": "audio/wav"})),
+        (
+            Content::ResourceLink(
+                Resource::new("ymir://clips/a", "a").with_title("A").with_description("d").with_mime_type("video/mp4").with_size(9),
+            ),
+            json!({"type": "resource_link", "uri": "ymir://clips/a", "name": "a", "title": "A", "description": "d", "mimeType": "video/mp4", "size": 9}),
+        ),
+        (
+            Content::Resource(ResourceContents::bytes("ymir://f/0", Some("image/png"), png)),
+            json!({"type": "resource", "resource": {"uri": "ymir://f/0", "mimeType": "image/png", "blob": "iVBORw0KGgo="}}),
+        ),
+        (
+            Content::Resource(ResourceContents::text("ymir://t", None, "hi")),
+            json!({"type": "resource", "resource": {"uri": "ymir://t", "text": "hi"}}),
+        ),
+    ];
+    for (content, wire) in cases {
+        assert_eq!(content.to_json(), wire);
+        assert_eq!(Content::from_json(&wire).as_ref(), Some(&content), "{wire}");
+        // Through a serialised string too, as on the wire.
+        let reparsed: Value = serde_json::from_str(&content.to_json().to_string()).unwrap();
+        assert_eq!(Content::from_json(&reparsed), Some(content));
+    }
+}
+
+#[test]
+fn content_helpers_decode_and_describe_media() {
+    let png = b"\x89PNG\r\n\x1a\n";
+    let img = Content::image_bytes(png, "image/png");
+    assert!(img.is_image() && !img.is_audio());
+    assert_eq!(img.mime_type(), Some("image/png"));
+    assert_eq!(img.decoded_bytes().as_deref(), Some(&png[..]));
+    assert_eq!(img.as_text(), None);
+    let audio = Content::audio_bytes(&[0, 1, 2, 255], "audio/wav");
+    assert!(audio.is_audio() && !audio.is_image());
+    assert_eq!(audio.decoded_bytes(), Some(vec![0, 1, 2, 255]));
+    assert_eq!(audio.format().as_deref(), Some("wav"));
+    assert_eq!(Content::audio_format("SUQz", "mp3").decoded_bytes(), Some(b"ID3".to_vec()));
+    // Empty media is valid base64 for nothing.
+    assert_eq!(Content::image("", "image/gif").decoded_bytes(), Some(Vec::new()));
+    // Invalid base64 is not decoded.
+    assert_eq!(Content::image("not base64!", "image/png").decoded_bytes(), None);
+    let text = Content::text("hi");
+    assert_eq!(text.as_text(), Some("hi"));
+    assert_eq!((text.mime_type(), text.decoded_bytes(), text.is_image(), text.is_audio()), (None, None, false, false));
+    let blob = Content::Resource(ResourceContents::bytes("x://b", Some("audio/ogg"), b"OggS"));
+    assert_eq!((blob.mime_type(), blob.decoded_bytes()), (Some("audio/ogg"), Some(b"OggS".to_vec())));
+    assert_eq!(Content::Resource(ResourceContents::text("x://t", None, "t")).decoded_bytes(), None);
+    assert_eq!(Content::ResourceLink(Resource::new("x://l", "l").with_mime_type("video/webm")).mime_type(), Some("video/webm"));
+    // data: URLs and MCP JSON agree.
+    let from_url = Content::from_data_url("data:image/png;base64,iVBORw0KGgo=").unwrap();
+    assert_eq!(Content::from_json(&from_url.to_json()), Some(img));
+}
+
+#[test]
+fn content_parsing_is_lenient_about_extras_and_strict_about_required_fields() {
+    // MCP's optional `annotations` and `_meta` are accepted and dropped.
+    let annotated = json!({"type": "image", "data": "AA==", "mimeType": "image/png", "annotations": {"audience": ["user"], "priority": 0.5}, "_meta": {"t": 1.5}});
+    assert_eq!(Content::from_json(&annotated), Some(Content::image("AA==", "image/png")));
+    let audio = json!({"type": "audio", "data": "UklG", "mimeType": "audio/wav", "annotations": {"lastModified": "2026-11-26T00:00:00Z"}});
+    assert_eq!(Content::from_json(&audio), Some(Content::audio("UklG", "audio/wav")));
+    for bad in [
+        json!({"type": "image", "data": "AA=="}),
+        json!({"type": "image", "mimeType": "image/png"}),
+        json!({"type": "audio", "data": 5, "mimeType": "audio/wav"}),
+        json!({"type": "text"}),
+        json!({"type": "resource_link", "uri": "x://a"}),
+        json!({"type": "resource", "resource": {"uri": "x://a"}}),
+        json!({"type": "resource"}),
+        json!({"type": "video", "data": "AA==", "mimeType": "video/mp4"}),
+        json!({"data": "AA==", "mimeType": "image/png"}),
+        json!("text"),
+        json!(null),
+    ] {
+        assert_eq!(Content::from_json(&bad), None, "{bad}");
+    }
+}
+
+#[test]
+fn mixed_tool_results_round_trip() {
+    let r = CallToolResult::new(vec![
+        Content::text("frame at 0.0s"),
+        Content::image_bytes(b"GIF89a", "image/gif"),
+        Content::text("frame at 1.5s"),
+        Content::image("iVBORw==", "image/png"),
+        Content::audio_format("UklG", "wav"),
+    ])
+    .with_structured(json!({"frames": [0.0, 1.5]}));
+    let wire = r.to_json();
+    assert_eq!(
+        wire,
+        json!({
+            "content": [
+                {"type": "text", "text": "frame at 0.0s"},
+                {"type": "image", "data": "R0lGODlh", "mimeType": "image/gif"},
+                {"type": "text", "text": "frame at 1.5s"},
+                {"type": "image", "data": "iVBORw==", "mimeType": "image/png"},
+                {"type": "audio", "data": "UklG", "mimeType": "audio/wav"},
+            ],
+            "structuredContent": {"frames": [0.0, 1.5]},
+            "isError": false,
+        })
+    );
+    let back = CallToolResult::from_json(&wire);
+    assert_eq!(back, r);
+    assert_eq!(back.text(), "frame at 0.0s\nframe at 1.5s");
+    assert_eq!(back.content.iter().filter(|c| c.is_image()).count(), 2);
+    assert_eq!(back.content.iter().filter(|c| c.is_audio()).count(), 1);
+    let failed = CallToolResult::error("no frames").with(Content::image("AA==", "image/png"));
+    assert_eq!(CallToolResult::from_json(&failed.to_json()), failed);
+}
+
+#[test]
+fn text_only_and_unknown_tool_results_stay_compatible() {
+    // A text-only result, as servers have always sent it.
+    let wire = json!({"content": [{"type": "text", "text": "hello"}], "isError": false});
+    let r = CallToolResult::from_json(&wire);
+    assert_eq!(r, CallToolResult::new(vec![Content::text("hello")]));
+    assert_eq!(r.to_json(), wire);
+    assert_eq!(r.text(), "hello");
+    // The JSON helper still serialises byte-for-byte as before and parses back.
+    for v in [json!({"a": 1}), json!([1, 2]), json!("s")] {
+        let j = CallToolResult::json(&v);
+        assert_eq!(j.to_json().to_string(), tool_ok(&v).to_string());
+        assert_eq!(CallToolResult::from_json(&j.to_json()), j);
+    }
+    // Missing fields default; unknown and malformed blocks are skipped, order kept.
+    assert_eq!(CallToolResult::from_json(&json!({})), CallToolResult::new(vec![]));
+    let odd = json!({
+        "content": [{"type": "video", "uri": "x"}, {"type": "audio", "data": "UklG", "mimeType": "audio/wav"}, 7, {"type": "text", "text": "t"}],
+        "structuredContent": null,
+        "isError": true,
+    });
+    let r = CallToolResult::from_json(&odd);
+    assert_eq!(r.content, vec![Content::audio("UklG", "audio/wav"), Content::text("t")]);
+    assert_eq!((r.structured, r.is_error), (None, true));
+}
+
 // ---- async tools and resources ----
 
 struct Async {

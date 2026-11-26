@@ -35,6 +35,17 @@ produced.
   `resource_link`, embedded resources, and `structuredContent`. `Content::from_data_url`,
   `data_url`, `audio_format` and `format` convert to and from the `data:` URLs and audio formats
   that [weirdnet-agent](https://crates.io/crates/weirdnet-agent) 0.5 `ContentPart`s use.
+  `Content::image_bytes` / `audio_bytes` base64-encode raw bytes; `Content::from_json` and
+  `CallToolResult::from_json` parse the wire JSON back, and `decoded_bytes`, `mime_type`,
+  `is_image`, `is_audio`, `as_text` and `CallToolResult::text` read it.
+
+```json
+{"content": [
+  {"type": "text", "text": "frame at 1.5s"},
+  {"type": "image", "data": "iVBORw0KGgo=", "mimeType": "image/png"},
+  {"type": "audio", "data": "UklGRiQAAABXQVZF", "mimeType": "audio/wav"}
+], "isError": false}
+```
 - `args`: argument getters with uniform messages.
 
 ### Transports
@@ -67,7 +78,9 @@ weirdnet_mcp::stdio::serve(server, tokio::io::stdin(), tokio::io::stdout()).awai
 The server API above needs neither feature.
 
 - `client`: `Client::connect(transport, ClientOptions)` runs `initialize`, then `list_tools`
-  (follows cursors), `call_tool` and `call_tool_until(name, args, cancel)`. Every request has a
+  (follows cursors), `call_tool` and `call_tool_until(name, args, cancel)` (text, with
+  `[image content omitted]` notes), and `call_tool_content` / `call_tool_content_until`, which
+  return the full `CallToolResult` with image, audio and resource blocks. Every request has a
   timeout; a timeout or cancel sends `notifications/cancelled`. Transports: `StdioTransport`
   (`spawn(&StdioCommand)` or `from_io`) and `HttpTransport` (`HttpConfig`; JSON or SSE responses,
   `Mcp-Session-Id` and `MCP-Protocol-Version` headers, no redirects). The client speaks the

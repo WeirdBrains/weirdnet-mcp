@@ -16,7 +16,7 @@
 //! - [`PromptSpec`] / [`PromptArg`] / [`GetPromptResult`] / [`PromptMessage`]: prompt tables and
 //!   filled-in prompts for `prompts/list` and `prompts/get`.
 //! - [`CallToolResult`] / [`Content`]: tool results with text, image, audio, resource links and
-//!   embedded resources.
+//!   embedded resources, built by servers and parsed back by clients ([`CallToolResult::from_json`]).
 //! - [`args`]: typed argument getters with uniform error messages.
 //! - [`stdio`]: `stdio::serve_blocking` (sync tools), `stdio::serve` (cargo feature
 //!   `stdio-server`: concurrent requests and cancellation), and `stdio::bridge`, the `<app>ctl mcp`

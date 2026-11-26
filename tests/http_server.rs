@@ -308,6 +308,10 @@ async fn the_crate_client_talks_to_the_http_server() {
     assert_eq!(client.list_tools().await.unwrap().len(), 3);
     let r = client.call_tool("picture", json!({})).await.unwrap();
     assert_eq!(r.text, "a pixel\n[image content omitted]");
+    let full = client.call_tool_content("picture", json!({})).await.unwrap();
+    assert_eq!(full.content, vec![Content::text("a pixel"), Content::image("R0lGODlh", "image/gif")]);
+    assert_eq!(full.text(), "a pixel");
+    assert_eq!(full.content[1].decoded_bytes().as_deref(), Some(&b"GIF89a"[..]));
     client.close().await;
     let bad = HttpConfig::new(format!("http://{addr}/mcp")).bearer(Secret::new("nope"));
     assert!(Client::connect(HttpTransport::new(&bad).unwrap(), ClientOptions::default()).await.is_err());

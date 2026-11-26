@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Parsing tool results: `CallToolResult::from_json` and `Content::from_json` (text, image, audio, resource links and embedded resources), plus `Resource::from_json` and `ResourceContents::from_json`.
+- Content helpers: `Content::decoded_bytes`, `mime_type`, `is_image`, `is_audio`, `as_text`, `CallToolResult::text` and `ResourceContents::decoded_bytes`.
+- `client`: `Client::call_tool_content` and `call_tool_content_until` keep image and audio blocks in tool results.
+
 ## [0.6.1] - 2026-11-22
 
 ### Added

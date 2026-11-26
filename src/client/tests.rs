@@ -157,6 +157,22 @@ async fn calls_tools_and_reports_failures() {
 }
 
 #[tokio::test]
+async fn content_calls_keep_blocks_and_errors_and_can_be_cancelled() {
+    let mock = Mock::default();
+    let client = Client::connect(mock.transport(), options(10_000)).await.unwrap();
+    let ok = client.call_tool_content("echo", json!({"text": "hi"})).await.unwrap();
+    assert_eq!(ok.structured, Some(json!({"echo": "hi"})));
+    assert!(ok.text().contains("\"echo\": \"hi\""));
+    let failed = client.call_tool_content("delete", Value::Null).await.unwrap();
+    assert_eq!(failed, crate::CallToolResult::error("refused"));
+    assert!(matches!(client.call_tool_content("nope", json!({})).await, Err(ClientError::Rpc { .. })));
+    let r = client.call_tool_content_until("hang", json!({}), tokio::time::sleep(Duration::from_millis(100))).await;
+    assert_eq!(r, Err(ClientError::Cancelled));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(mock.cancelled.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn concurrent_calls_are_matched_by_id() {
     let client = Arc::new(Client::connect(Mock::default().transport(), options(2000)).await.unwrap());
     let mut tasks = Vec::new();
